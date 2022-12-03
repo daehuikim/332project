@@ -7,14 +7,16 @@ import protos.network.{
   ConnectionReply,
   MergeRequest,
   MergeReply,
-  ShuffleReply,
-  ShuffleRequest,
   SortPartitionReply,
   SortPartitionRequest,
   SamplingReply,
   SamplingRequest,
   FileRequest,
   FileReply,
+  ShuffleReadyRequest,
+  ShuffleReadyReply,
+  ShuffleCompleteRequest,
+  ShuffleCompleteReply,
   ResultType
 }
 import java.util.logging.Logger
@@ -28,6 +30,7 @@ import scala.sys.process._
 import scala.io.Source
 import com.google.protobuf.ByteString
 import rangegenerator.keyRangeGenerator
+import shufflenetwork.FileServer
 
 object NetworkServer {
   private val logger =
@@ -155,12 +158,21 @@ class NetworkServer(executionContext: ExecutionContext, numClients: Int) {
       Future.successful(reply)
     }
 
-    override def shuffle(req: ShuffleRequest) = {
-      val reply = ShuffleReply(
-        message = "Connection complete from "
-      )
+    override def shuffleReady(req: ShuffleReadyRequest) = {
+    val addr = req.addr match{
+        case Some(addr) => addr
+        case None       => Address(ip ="", port =1)// TODO: error handling                
+    }
+      NetworkServer.logger.info("[Shuffle] File Server connection Request from " + addr.ip + ":" + addr.port + " arrived")
+    // TODO: save worker information
+    // can give pending?
+      val reply = ShuffleReadyReply(result = ResultType.SUCCESS)
+      NetworkServer.logger.info("[Shuffle] File Server open at " + addr.ip + ":" + addr.port + " completed")
       Future.successful(reply)
     }
+
+    override def shuffleComplete(req: ShuffleCompleteRequest):Future[ShuffleCompleteReply] = ???
+
     override def sortPartition(req: SortPartitionRequest) = {
       val addr = req.addr match {
         case Some(addr) => addr

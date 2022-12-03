@@ -6,7 +6,8 @@ service Network {
     rpc Connection (ConnectionRequest) returns (ConnectionReply) {}
     rpc Sampling (SamplingRequest) returns (SamplingReply) {}
     rpc SortPartition (SortPartitionRequest) returns (SortPartitionReply) {}
-    rpc Shuffle (ShuffleRequest) returns (ShuffleReply) {}
+    rpc ShuffleReady(ShuffleReadyRequest) returns(ShuffleReadyReply){}
+    rpc ShuffleComplete(ShuffleCompleteRequest) returns(ShuffleCompleteReply) {}
     rpc Merge (MergeRequest) returns (MergeReply) {}
     rpc FileTransfer (FileRequest) returns (FileReply) {}
   }
@@ -52,11 +53,21 @@ service Network {
     string message = 1;
   }
 
-  message ShuffleRequest {
+  message ShuffleReadyRequest {
     Address addr = 1;
   }
-  message ShuffleReply {
-    string message = 1;
+
+  message ShuffleReadyReply {
+      ResultType result = 1;
+      /*client map information*/
+  }
+
+  message ShuffleCompleteRequest {
+    Address addr = 1;
+  }
+
+  message ShuffleCompleteReply {
+    ResultType result = 1;
   }
 
   message MergeRequest {

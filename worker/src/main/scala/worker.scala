@@ -12,6 +12,8 @@ import scala.concurrent.duration._
 import phase.sampleMaker
 import io.grpc.stub.StreamObserver
 import scala.io.Source
+import shufflenetwork.FileServer
+import scala.concurrent.ExecutionContext
 
 object Worker {
   def main(args: Array[String]): Unit = {
@@ -44,11 +46,21 @@ object Worker {
         // TODO: if fails
       }
 
+      val shuffleserver = FileServer(ExecutionContext.global,1)
+      shuffleserver.start()
+      client.checkShuffleReady()
+
       sort("./data/received")
+
+
+
+
       mergeFile("./data/partition")
       client.sortPartitionComplete()
-
+      /*TBD*/
+      shuffleserver.blockUntilShutdown()
     } finally {
+      
       client.shutdown()
     }
   }

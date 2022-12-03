@@ -7,17 +7,20 @@ import protos.network.{
   ConnectionReply,
   MergeRequest,
   MergeReply,
-  ShuffleReply,
-  ShuffleRequest,
   SortPartitionReply,
   SortPartitionRequest,
   SamplingReply,
   SamplingRequest,
-  FileReply,
   FileRequest,
+  FileReply,
+  ShuffleReadyRequest,
+  ShuffleReadyReply,
+  ShuffleCompleteRequest,
+  ShuffleCompleteReply,
   ResultType
 }
 
+import shuffle.shuffle.ShuffleNetworkGrpc.ShuffleNetworkBlockingStub
 import protos.network.NetworkGrpc.{NetworkBlockingStub, NetworkStub}
 import java.util.concurrent.TimeUnit
 import java.util.logging.{Level, Logger}
@@ -30,6 +33,8 @@ import java.io.{OutputStream, FileOutputStream, File, IOException}
 import java.nio.file.{Files, Path, Paths}
 import scala.concurrent.{Promise, Await}
 import scala.concurrent.duration._
+
+import shufflenetwork.FileServer
 
 object NetworkClient {
   def apply(host: String, port: Int): NetworkClient = {
@@ -88,6 +93,22 @@ class NetworkClient private (
       case e: StatusRuntimeException =>
         logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus)
         SamplingReply(ResultType.FAILURE)
+    }
+  }
+
+  def checkShuffleReady(): ShuffleReadyReply ={
+    logger.info("[Shuffle] Try to send Shuffle ready to Master")
+    val addr = Address(localhostIP, port)
+    val request = ShuffleReadyRequest(Some(addr))
+    println(request)
+    try {
+      val response = blockingStub.shuffleReady(request)
+      logger.info("[shuffle]: Connect" + response.result)
+      response
+    } catch {
+      case e: StatusRuntimeException =>
+        logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus)
+        ShuffleReadyReply(ResultType.FAILURE)
     }
   }
 
