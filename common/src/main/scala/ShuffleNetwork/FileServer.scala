@@ -1,6 +1,8 @@
 package shufflenetwork
 
 import shuffle.shuffle.{
+    sAddress,
+    sResultType,
     ShuffleNetworkGrpc,
     SendPartitionRequest,
     SendPartitionReply
@@ -56,6 +58,16 @@ class FileServer(executionContext: ExecutionContext, numClients: Int) {
     }
 
     private class ShuffleNetworkImpl extends ShuffleNetworkGrpc.ShuffleNetwork {
-        override def sendPartition(req: SendPartitionRequest) = ???
+        override def sendPartition(req: SendPartitionRequest) = {
+            val addr = req.addr match{
+                case Some(addr) => addr
+                case None       => sAddress(ip = "", port = 1)
+            }
+            FileServer.logger.info("[Shuffle] Partition from" + addr.ip +":" + addr.port + " arrived")
+            val reply = SendPartitionReply(result = sResultType.SuCCESS)
+            FileServer.logger.info("[Shuffle] Get Partition from " + addr.ip)
+            Future.successful(reply)
+        }
+        
     }
 }

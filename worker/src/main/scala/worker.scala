@@ -13,6 +13,7 @@ import phase.sampleMaker
 import io.grpc.stub.StreamObserver
 import scala.io.Source
 import shufflenetwork.FileServer
+import shufflenetwork.FileClient
 import scala.concurrent.ExecutionContext
 
 object Worker {
@@ -28,6 +29,8 @@ object Worker {
     val inputPath = System.getProperty("user.dir") + "data/input"
     val sampleInputPath = System.getProperty("user.dir") + "/data/input"
     val sampleSize = 10
+    val workerip = ""
+    val workerPort = 0
 
     try {
       val address = args.headOption.getOrElse("Team Red!")
@@ -49,12 +52,19 @@ object Worker {
       val shuffleserver = FileServer(ExecutionContext.global,1)
       shuffleserver.start()
       client.checkShuffleReady()
+      /*TBD*/
+      val shuffleclient = FileClient(workerip,workerPort)
 
+      val to = ""
+      val partition = Seq("")
+      /*Repeat for every workers*/
+      shuffleclient.sendPartitions(to, partition)
+      shuffleclient.shutdown()
+
+      /*shuffle complete*/
+      client.checkShuffleComplete()
+      
       sort("./data/received")
-
-
-
-
       mergeFile("./data/partition")
       client.sortPartitionComplete()
       /*TBD*/

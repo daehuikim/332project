@@ -20,10 +20,9 @@ enum sResultType {
 message SendPartitionRequest {
     sAddress from = 1;
     sAddress to = 2;
-    string item =3; /*TBD*/
+    string partition = 3; /*TBD*/
 }
 
 message SendPartitionReply {
     sResultType result = 1;
-   // Address from = 2; /*Check*/
 }
