@@ -69,7 +69,7 @@ object mergeHelper {
     }
 
   def getMinKeyIndex(lines: List[String]) = {
-    var min = "~~~~~~~~~~"
+    var min = "          "
     var idx = 0
 
     for (i <- 0 to lines.size - 1) {
@@ -181,7 +181,7 @@ object mergeHelper {
         val minList = new ListBuffer[String]()
         files.foreach(file => {
           if (!file.isEmpty) minList += file.head
-          else minList += "~~~~~~~~~~"
+          else minList += "          "
         })
         val minIdx = getMinKeyIndex(minList.toList)
         val min = files(minIdx).head

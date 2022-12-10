@@ -5,16 +5,18 @@ import protos.network.{
   Address,
   ConnectionRequest,
   ConnectionReply,
-  MergeRequest,
-  MergeReply,
+  SamplingReply,
+  SamplingRequest,
+  RangeGenerateRequest,
+  RangeGenerateReply,
   ShuffleReadyRequest,
   ShuffleReadyReply,
   ShuffleCompleteRequest,
   ShuffleCompleteReply,
   SortPartitionReply,
   SortPartitionRequest,
-  SamplingReply,
-  SamplingRequest,
+  MergeRequest,
+  MergeReply,
   ResultType
 }
 
@@ -30,6 +32,7 @@ import java.io.{OutputStream, FileOutputStream, File, IOException}
 import java.nio.file.{Files, Path, Paths}
 import scala.concurrent.{Promise, Await}
 import scala.concurrent.duration._
+
 
 object NetworkClient {
   def apply(host: String, port: Int): NetworkClient = {
@@ -47,6 +50,7 @@ class NetworkClient private (
   val id: Int = -1
   val localhostIP = InetAddress.getLocalHost.getHostAddress
   val port = 9000
+  val asyncStub = NetworkGrpc.stub(channel)
 
   private[this] val logger =
     Logger.getLogger(classOf[NetworkClient].getName)
@@ -56,61 +60,73 @@ class NetworkClient private (
   }
 
   def connect(address: String): ConnectionReply = {
-    logger.info(
-      "[Connection]: Start to connect to Master server " + address
-    )
-
+    logger.info("[Connection]: Start to connect to Master server " + address)
     val addr = Address(localhostIP, port)
     val request = ConnectionRequest(Some(addr))
     try {
       val response = blockingStub.connection(request)
-      logger.info(
-        "[Connection]: " + response.message
-      )
-
+      logger.info("[Connection]: " + response.message)
       response
     } catch {
       case e: StatusRuntimeException =>
         logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus)
-
         ConnectionReply(ResultType.FAILURE)
     }
   }
 
-  def sendSamples(samples: Seq[String]): SamplingReply = {
+  def sendSamples(samplePromise: Promise[Unit], samples: Seq[String],workerid: Int): Unit = {
     logger.info("[Sampling] Try to send samples to Master")
+    val  replyObserver = new StreamObserver[SamplingReply](){
+      override def onNext(reply: SamplingReply):Unit ={
+        if(reply.result == ResultType.SUCCESS){
+          samplePromise.success()
+        }
+      }
+      override def onError(t: Throwable): Unit = {
+        logger.info("[Sampling] Failed sampling")
+        samplePromise.failure(new Exception)
+      }
+      override def onCompleted(): Unit = {
+        logger.info("[Sampling] Received sampling response from Master")
+      }
+    }
 
-    val addr = Address(localhostIP, port)
-    val request = SamplingRequest(Some(addr), samples)
+    val requestObserver = asyncStub.sampling(replyObserver)
 
     try {
-      val response = blockingStub.sampling(request)
-      logger.info(
-        "[Sampling] Received sampling response from Master"
-      )
+      val addr = Address(localhostIP, port)
+      val request = SamplingRequest(Some(addr), samples,workerid)
+      requestObserver.onNext(request)
+    } catch {
+      case e: StatusRuntimeException =>
+        logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus)
+        requestObserver.onError(e)
+        throw e
+    }
+      requestObserver.onCompleted
+  }
 
+  def getRanges(): RangeGenerateReply = {
+    logger.info("[RangeGenerate] send request to get ranges from Master server")
+    val addr = Address(localhostIP, port)
+    val request = RangeGenerateRequest(Some(addr))
+    try {
+      val response = blockingStub.rangeGenerate(request)
+      logger.info( "[RangeGenerate] recived ranges from Master server")
       response
     } catch {
       case e: StatusRuntimeException =>
         logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus)
-
-        SamplingReply(ResultType.FAILURE)
+        RangeGenerateReply(ResultType.FAILURE)
     }
   }
 
   def sortPartitionComplete(): SortPartitionReply = {
-    logger.info(
-      "[Sort/Partition] Try to send finish message to Master server"
-    )
-
+    logger.info("[Sort/Partition] Try to send finish message to Master server")
     val addr = Address(localhostIP, port)
     val request = SortPartitionRequest(Some(addr))
     try {
       val response = blockingStub.sortPartition(request)
-      logger.info(
-        "[Sort/Partition]" + response.message
-      )
-
       response
     } catch {
       case e: StatusRuntimeException =>
@@ -120,66 +136,48 @@ class NetworkClient private (
   }
 
   def checkShuffleReady(state: Boolean): ShuffleReadyReply = {
-    logger.info(
-      "[Shuffle] Try to send Shuffle ready to Master"
-    )
+    logger.info("[Shuffle] Try to send Shuffle ready to Master")
 
     val addr = Address(localhostIP, port)
     val request = ShuffleReadyRequest(Some(addr))
 
     try {
       val response = blockingStub.shuffleReady(request)
-      logger.info(
-        "[shuffle] Connect Status: " + response.result
-      )
-
+      logger.info("[shuffle] Connect Status: " + response.result)
       response
     } catch {
       case e: StatusRuntimeException =>
         logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus)
-
         ShuffleReadyReply(ResultType.FAILURE)
     }
   }
 
   def checkShuffleComplete(state: Boolean): ShuffleCompleteReply = {
-    logger.info(
-      "[Shuffle] Try to send Master shuffle complete"
-    )
+    logger.info("[Shuffle] Try to send Master shuffle complete")
     val addr = Address(localhostIP, port)
     val request = ShuffleCompleteRequest(Some(addr), state)
     try {
       val response = blockingStub.shuffleComplete(request)
-      logger.info(
-        "[Shuffle] complete arrange every partitions at" + addr.ip
-      )
+      logger.info("[Shuffle] complete arrange every partitions at" + addr.ip)
       response
     } catch {
       case e: StatusRuntimeException =>
         logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus)
-
         ShuffleCompleteReply(ResultType.FAILURE)
     }
   }
 
   def mergeComplete(): MergeReply = {
-    logger.info(
-      "[Merge] Try to send finish message to Master server"
-    )
+    logger.info("[Merge] Try to send finish message to Master server")
     val addr = Address(localhostIP, port)
     val request = MergeRequest(Some(addr))
     try {
       val response = blockingStub.merge(request)
-      logger.info(
-        "[Merge]" + response.message
-      )
-
       response
     } catch {
       case e: StatusRuntimeException =>
         logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus)
         MergeReply(ResultType.FAILURE)
-
     }
   }
 }

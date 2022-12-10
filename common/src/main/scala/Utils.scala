@@ -4,7 +4,7 @@ import java.io.File
 import scala.collection.mutable.Buffer
 import scala.io.Source
 import shuffle.shuffle.partitionFile
-import protos.network.SamplingReply
+import protos.network.RangeGenerateReply
 import util.control.Breaks.{breakable,break}
 
 object Utils {
@@ -54,11 +54,11 @@ object Utils {
     result
   }
 
-  def getId(samplingReply: SamplingReply, localhostIP: String):Int = {
+  def getId(rangeGenerateReply: RangeGenerateReply, localhostIP: String):Int = {
     var id = 0
     breakable{
-      for (i <- 0 to samplingReply.addresses.length-1){
-        if(samplingReply.addresses(i).ip == localhostIP){
+      for (i <- 0 to rangeGenerateReply.addresses.length-1){
+        if(rangeGenerateReply.addresses(i).ip == localhostIP){
           id = i
         }
      }

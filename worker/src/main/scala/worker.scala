@@ -25,6 +25,8 @@ import scala.concurrent.ExecutionContext
 import java.net.InetAddress
 import util.control.Breaks.{breakable, break}
 import common.Utils
+import scala.util.control.Exception
+import scala.concurrent.{ExecutionContext, Promise, Await}
 
 object Worker {
   def main(args: Array[String]): Unit = {
@@ -49,17 +51,22 @@ object Worker {
       /*@@@@@ connection phase @@@@@*/
       val connectResponse = client.connect(args(0))
       if (connectResponse.result == ResultType.FAILURE) {
-        // TODO: if fails
+        throw new Exception
+        println("[Connection] failed to connect")
       }
+      val workerId = connectResponse.id
 
       /*@@@@@ sampling phase @@@@@*/
       val samples = sampleMaker.makeSamples(inputFilePaths)
-      val samplingReply = client.sendSamples(samples)
-      if (samplingReply.result == ResultType.FAILURE) {
-        // TODO: if fails
-      }
-      // getid, subranges
-      val id = Utils.getId(samplingReply, localhostIP)
+      samples.foreach(println)
+      val samplePromise = Promise[Unit]()
+      client.sendSamples(samplePromise,samples,workerId)
+      Await.ready(samplePromise.future,Duration.Inf)
+
+      /*@@@@@ ketgenerate phase @@@@@*/
+      val rangeInfo = client.getRanges()
+      rangeInfo.addresses.foreach(println)
+      rangeInfo.ranges.foreach(println)
 
       /*@@@@@ sort phase @@@@@*/
       val sortDir = System.getProperty("user.dir") + "/data/sort"
@@ -67,16 +74,17 @@ object Worker {
 
       /*@@@@@ partition phase @@@@@*/
       val partitionDir = System.getProperty("user.dir") + "/data/partitions"
-      partitionMaker.partition(sortDir, partitionDir, samplingReply.ranges, id)
+      partitionMaker.partition(sortDir, partitionDir, rangeInfo.ranges, workerId)
 
       val sortPartitionResponse = client.sortPartitionComplete()
       if (sortPartitionResponse.result == ResultType.FAILURE) {
-        // TODO: if fails
+        throw new Exception
+        println("[sort/partition] failedto sort/partition")
       }
 
       /*@@@@@ shuffling phase1:shuffle ready @@@@@*/
-      val workers = samplingReply.addresses
-      val ranges = samplingReply.ranges
+      val workers = rangeInfo.addresses
+      val ranges = rangeInfo.ranges
       val numWorkers = workers.length
       val shuffleDirs = System.getProperty("user.dir") + "/data/shuffled"
       val shuffleserver = FileServer(ExecutionContext.global, numWorkers - 1)
@@ -91,7 +99,7 @@ object Worker {
       var isShuffleComplete = false
       for (i <- 0 to workers.length - 1) {
         breakable {
-          if (i == id) {
+          if (i == workerId) {
             if (i == workers.length - 1) {
               isShuffleComplete = true
               break
@@ -119,7 +127,8 @@ object Worker {
       /*@@@@@ shuffling phase3:shuffle Complete @@@@@*/
       val shuffleCompleteness = client.checkShuffleComplete(isShuffleComplete)
       if (shuffleCompleteness.result == ResultType.FAILURE) {
-        // TODO: if fails
+        throw new Exception
+        println("[shuffle] failedto shuffle")
       }
       shuffleserver.stop()
       /*@@@@@ merge phase @@@@@*/
