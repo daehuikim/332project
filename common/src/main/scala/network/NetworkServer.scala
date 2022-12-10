@@ -16,7 +16,9 @@ import protos.network.{
   SortPartitionReply,
   SortPartitionRequest,
   MergeRequest,
-  MergeReply
+  MergeReply,
+  RangeRequest,
+  RangeReply
 }
 import java.util.logging.Logger
 import scala.concurrent.{ExecutionContext, Future}
@@ -52,6 +54,8 @@ class NetworkServer(executionContext: ExecutionContext, numClients: Int) {
   private[this] var server: Server = null
   private[this] var clientMap: Map[Int, WorkerInfo] = Map()
   private[this] var addressList: Seq[Address] = Seq()
+  private[this] var samples: Seq[ByteString] = Seq()
+  private[this] var keyranges: Seq[Range] = Seq()
 
   private val localhostIP = InetAddress.getLocalHost.getHostAddress
 
@@ -132,75 +136,78 @@ class NetworkServer(executionContext: ExecutionContext, numClients: Int) {
       }
     }
 
-    override def sampling(req: SamplingRequest) = {
+    override def sampling(replyObserver: StreamObserver[SamplingReply]): StreamObserver[SamplingRequest] = {
+      NetworkServer.logger.info("[sample]: Worker tries to send sample")
+
+        new StreamObserver[SamplingRequest] {
+          var workerip:String = ""
+          var workerport:Int = -1
+
+          override def onNext(request: SamplingRequest): Unit = {
+            workerip = request.addr.get.ip
+            workerport = request.addr.get.port
+            samples = samples :+ request.sample
+          }
+          override def onError(t: Throwable): Unit = {
+            NetworkServer.logger.warning("[sample]: Worker failed to send sample")
+            throw t
+          }
+          override def onCompleted(): Unit = {
+            NetworkServer.logger.info("[sample]: Worker done sending sample")
+            replyObserver.onNext(new SamplingReply(ResultType.SUCCESS))
+            replyObserver.onCompleted
+
+            clientMap.synchronized {
+            for (i <- 1 to clientMap.size) {
+              val workerInfo = clientMap(i)
+              if (workerInfo.ip == workerip && workerInfo.port == workerport) {
+                val newWorkerInfo = new WorkerInfo(workerip, workerport)
+                newWorkerInfo.setWorkerState(state = WorkerState.Sampling)
+                clientMap = clientMap + (i -> newWorkerInfo)
+                }
+              }
+            }
+            addressList.synchronized {
+            if (addressList.size != numClients) {
+              for (i <- 1 to clientMap.size) {
+                val workerInfo = clientMap(i)
+                val address = Address(ip = workerInfo.ip, port = workerInfo.port)
+                addressList = addressList :+ address
+                }
+              }
+            }
+
+            keyranges.synchronized {
+              keyranges = new keyRangeGenerator(samples,numClients).generateKeyrange
+            }
+          }
+        }
+    }
+
+    override def range(req: RangeRequest) = {
       val addr = req.addr match {
         case Some(addr) => addr
         case None       => Address(ip = "", port = 1) // TODO: error handling
       }
-      NetworkServer.logger.info(
-        "[Sampling] Sampling Request from " + addr.ip + ":" + addr.port + " arrived"
-      )
-
-      var samples: Seq[String] = Seq()
-      samples.synchronized {
-        samples = samples ++ req.samples
-      }
-
-      // Makes clientMap of workers
       clientMap.synchronized {
         for (i <- 1 to clientMap.size) {
           val workerInfo = clientMap(i)
           if (workerInfo.ip == addr.ip && workerInfo.port == addr.port) {
             val newWorkerInfo = new WorkerInfo(addr.ip, addr.port)
-            newWorkerInfo.setWorkerState(state = WorkerState.Sampling)
+            newWorkerInfo.setWorkerState(state = WorkerState.Range)
             clientMap = clientMap + (i -> newWorkerInfo)
           }
         }
       }
-
-      // TODO: needs refactoring --> just make the last worker do this != -> ==, remove synchronized
-      // Makes the list of address, which will be sent to the worker
-      addressList.synchronized {
-        if (addressList.size != numClients) {
-          for (i <- 1 to clientMap.size) {
-            val workerInfo = clientMap(i)
-            val address = Address(ip = workerInfo.ip, port = workerInfo.port)
-            addressList = addressList :+ address
-          }
-        }
-      }
-
-      if (
-        waitWhile(() => !isAllWorkersSameState(WorkerState.Sampling), 100000)
-      ) {
-        val keyRanges: Seq[Range] =
-          new keyRangeGenerator(req.samples, numClients)
-            .generateKeyrange()
-        keyRanges.foreach(println)
-
-        val reply = SamplingReply(
-          result = ResultType.SUCCESS,
-          // message = "Connection complete to master from " + addr.ip
-          ranges = keyRanges,
-          addresses = addressList
-        )
-
-        NetworkServer.logger.info(
-          "[Sampling] sampling completed from  " + addr.ip + ":" + addr.port
-        )
+      if (waitWhile(() => !isAllWorkersSameState(WorkerState.Range),100000)) {
+        NetworkServer.logger.info("[Range] Try to broadcast range ")
+        val reply = RangeReply(ResultType.SUCCESS,keyranges.toSeq,addressList)
+        keyranges.foreach(println)
         Future.successful(reply)
       } else {
-        val reply = SamplingReply(
-          result = ResultType.FAILURE
-          // message = "Connection failure to master from " + addr.ip
-        )
-
-        NetworkServer.logger.info(
-          "[Sampling] sampling failed from " + addr.ip + ":" + addr.port
-        )
-        Future.successful(reply)
+        NetworkServer.logger.warning("[Range] range failed")
+        Future.failed(new Exception)
       }
-
     }
 
     override def sortPartition(req: SortPartitionRequest) = {

@@ -24,6 +24,7 @@ object partitionMaker {
     Utils.createdir(outputDir)
     val filename = outputDir + "/To_" + to.toString() + "_From_" + from.toString() + "_" + count.toString
     val writer = new BufferedWriter(new FileWriter(filename))
+    writer.flush()
     for (line <- items){
         writer.write(line+"\n")
     }
@@ -40,7 +41,6 @@ object partitionMaker {
   
     val numItems = inputItems.length
     val partitionSizeLimit = 10000
-    var point = 0
     var rangeIndex = 0
     
     def divideItems (item: Seq[String], index: Int):Unit = {
@@ -72,7 +72,7 @@ object partitionMaker {
     val filePaths = Utils.getFilePathsFromDir(List(inputDir))
     Utils.createdir(outputDir)
     for( i <- 0 to filePaths.length -1){
-        var sorteditems = Utils.getFile(filePaths(i))
+        val sorteditems = Source.fromFile(filePaths(i)).getLines.toList
         partitionSingleFile(sorteditems, outputDir, ranges, id+1,i)
     }
 
