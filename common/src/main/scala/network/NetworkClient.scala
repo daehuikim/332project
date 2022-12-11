@@ -34,6 +34,7 @@ import scala.concurrent.{Promise, Await}
 import scala.concurrent.duration._
 import scala.io.Source
 import com.google.protobuf.ByteString
+import java.lang.Thread
 
 object NetworkClient {
   def apply(host: String, port: Int): NetworkClient = {
@@ -116,11 +117,14 @@ class NetworkClient private (
   }
 
   def getRange():RangeReply = {
-    logger.info("[Range] Try to broadcast Ranges from Master")
+    Thread.sleep(2000 * 10)
+    logger.info("[Range] Try to receive Ranges from Master")
     val addr = Address(localhostIP, port)
     val request = RangeRequest(Some(addr))
     try {
       val response = blockingStub.range(request)
+      logger.info("[Range]Done receiving Ranges")
+      response.ranges.foreach(println)
       response
     } catch {
       case e: StatusRuntimeException =>

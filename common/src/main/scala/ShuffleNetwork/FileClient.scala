@@ -40,6 +40,7 @@ class FileClient(
   val port = 8000
   val asyncStub = ShuffleNetworkGrpc.stub(channel)
   val choosenFiles = inputFilePaths.filter(_.split("/").last.split("_")(1) == to)
+  choosenFiles.foreach(println)
 
   private[this] val logger =
     Logger.getLogger(classOf[FileClient].getName)
@@ -49,7 +50,7 @@ class FileClient(
   }
 
   def shuffling():Unit = {
-    for (file <- choosenFiles){
+    for (file <- choosenFiles){ 
       val shufflePromise = Promise[Unit]()
       sendPartition(file, to, shufflePromise)
       Await.ready(shufflePromise.future,Duration.Inf)
@@ -78,7 +79,7 @@ class FileClient(
       val source = Source.fromFile(file)
       val filename = file.split("/").last
       for (line <- source.getLines) {
-        val request = SendPartitionRequest(Some(sAddress(localhostIP, port)),ByteString.copyFromUtf8(line),filename)
+        val request = SendPartitionRequest(Some(sAddress(localhostIP, port)),ByteString.copyFromUtf8(line+"\r\n"),filename)
         requestObserver.onNext(request)
       }
       source.close
@@ -92,26 +93,4 @@ class FileClient(
     // Mark the end of requests
     requestObserver.onCompleted()
   }
-
-  // def sendPartition(to: String, inputpaths: List[String], outputpath: String): SendPartitionReply = {
-  //   logger.info("[Shuffle] Try to send partition from" + localhostIP + "to" + to)
-  //   val fromaddr = sAddress(localhostIP, port)
-  // val choosenFiles = inputpaths.filter(_.split("/").last.split("_")(1) == to)
-  // val filenames = choosenFiles.map(file => file.split("/").last)
-  //   var partitions:Seq[partitionFile] = Seq() 
-  //   for(i <- choosenFiles){
-  //     partitions = partitions :+ Utils.getPartitionFile(i)
-  //   }
-  //   val request = SendPartitionRequest(Some(fromaddr), partitions, filenames.toSeq, outputpath)
-  //   try{
-  //       val response = blockingStub.sendPartition(request)
-  //       response
-  //   }catch{
-  //       case e: StatusRuntimeException =>
-
-  //       logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus)
-
-  //       SendPartitionReply(sResultType.FAILURE)
-  //   }
-  // }
 }

@@ -19,7 +19,8 @@ object  sortHelper {
     // var temp = Utils.convertTomutable(inputItems)
     // var sortedItems = temp.sortWith((s1, s2) => Utils.comparator(s1, s2))
     val inputItems = Source.fromFile(inputPath).getLines().toList
-    val sortedItems = inputItems.sortWith((s1, s2) => Utils.comparator(s1, s2))
+    val sortedItems = Utils.mergeSort(inputItems)
+    // val sortedItems = inputItems.sortWith((s1, s2) => Utils.comparator(s1, s2))
     Utils.createdir(outputDir)
     val outputPathString = outputDir + "/" + inputPath.split("/").last
     val writer = new BufferedWriter(new FileWriter(outputPathString))

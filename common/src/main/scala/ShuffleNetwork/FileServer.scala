@@ -116,7 +116,7 @@ class FileServer(executionContext: ExecutionContext, numClients: Int, outputPath
         }
 
         override def onCompleted(): Unit = {
-          FileServer.logger.info("[ShuffleServer]: Worker done sending partition")
+          FileServer.logger.info("[ShuffleServer]: Worker done getting partition")
           writer.close
           replyObserver.onNext(new SendPartitionReply(sResultType.SUCCESS))
           replyObserver.onCompleted

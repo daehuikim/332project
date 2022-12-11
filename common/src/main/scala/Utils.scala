@@ -15,6 +15,23 @@ object Utils {
     s1.slice(0, 10) < s2.slice(0, 10)
   }
 
+  def mergeSort(seq: List[String]): List[String] = seq match {
+  case Nil => Nil 
+  case xs::Nil => List(xs) 
+  case _ => 
+    val (left, right) = seq splitAt seq.length/2
+    merge(mergeSort(left), mergeSort(right))
+  }
+
+  def merge(seq1: List[String], seq2: List[String]): List[String] = 
+        (seq1, seq2) match {
+           case (Nil, _) => seq2
+           case (_, Nil) => seq1
+           case (x::xs, y::ys) =>
+            if(comparator(x,y)) x::merge(xs,seq2)
+            else y::merge(seq1,ys)
+  }
+
   def createdir (path:String) = {
     val dir = new File(path)
     if(!dir.exists()){

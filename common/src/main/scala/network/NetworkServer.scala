@@ -21,7 +21,7 @@ import protos.network.{
   RangeReply
 }
 import java.util.logging.Logger
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future, Await}
 import io.grpc.{Server, ServerBuilder, Status}
 import io.grpc.stub.StreamObserver;
 import java.net.InetAddress
@@ -34,6 +34,9 @@ import rangegenerator.keyRangeGenerator
 import shufflenetwork.FileServer
 import common.{WorkerState, WorkerInfo}
 import scala.concurrent.duration.Duration
+import scala.util.{Success, Failure}
+import scala.concurrent.ExecutionContext.Implicits.global
+import java.lang.Thread
 
 object NetworkServer {
   private val logger =
@@ -91,6 +94,7 @@ class NetworkServer(executionContext: ExecutionContext, numClients: Int) {
       server.awaitTermination()
     }
   }
+
 
   /* *** Master's functions *** */
   private class NetworkImpl extends NetworkGrpc.Network {
@@ -156,6 +160,7 @@ class NetworkServer(executionContext: ExecutionContext, numClients: Int) {
             NetworkServer.logger.info("[sample]: Worker done sending sample")
             replyObserver.onNext(new SamplingReply(ResultType.SUCCESS))
             replyObserver.onCompleted
+            
 
             clientMap.synchronized {
             for (i <- 1 to clientMap.size) {
@@ -176,15 +181,11 @@ class NetworkServer(executionContext: ExecutionContext, numClients: Int) {
                 }
               }
             }
-
-            keyranges.synchronized {
-              keyranges = new keyRangeGenerator(samples,numClients).generateKeyrange
-            }
           }
         }
     }
 
-    override def range(req: RangeRequest) = {
+    override def range(req: RangeRequest): Future[RangeReply] = {
       val addr = req.addr match {
         case Some(addr) => addr
         case None       => Address(ip = "", port = 1) // TODO: error handling
@@ -196,13 +197,17 @@ class NetworkServer(executionContext: ExecutionContext, numClients: Int) {
             val newWorkerInfo = new WorkerInfo(addr.ip, addr.port)
             newWorkerInfo.setWorkerState(state = WorkerState.Range)
             clientMap = clientMap + (i -> newWorkerInfo)
-          }
-        }
+            }
+            print(workerInfo)
+          } 
       }
+      keyranges.synchronized{
+        keyranges = new keyRangeGenerator(samples,numClients).generateKeyrange
+      }
+      // getkeyranges
       if (waitWhile(() => !isAllWorkersSameState(WorkerState.Range),100000)) {
-        NetworkServer.logger.info("[Range] Try to broadcast range ")
-        val reply = RangeReply(ResultType.SUCCESS,keyranges.toSeq,addressList)
-        keyranges.foreach(println)
+        NetworkServer.logger.info("[Range] Try to broadcast range "+ req.addr.get.ip)
+        val reply = RangeReply(ResultType.SUCCESS,keyranges,addressList)
         Future.successful(reply)
       } else {
         NetworkServer.logger.warning("[Range] range failed")
@@ -400,5 +405,33 @@ class NetworkServer(executionContext: ExecutionContext, numClients: Int) {
         if (clientMap(i).workerState != state) res = false
       res
     }
+
+    // def getkeyranges():Unit = {
+    //   if(isAllWorkersSameState(WorkerState.Sampling)){
+    //     val f = Future{
+    //       clientMap.synchronized {
+    //         for (i <- 1 to clientMap.size) {
+    //           val workerInfo = clientMap(i)
+    //           if (workerInfo.ip == workerip && workerInfo.port == workerport) {
+    //             if(i == 1){
+    //               keyranges = new keyRangeGenerator(samples,numClients).generateKeyrange()
+    //             }
+    //             val newWorkerInfo = new WorkerInfo(workerip, workerport)
+    //             newWorkerInfo.setWorkerState(state = WorkerState.Range)
+    //             clientMap = clientMap + (i -> newWorkerInfo)
+    //             }
+    //           }
+    //         }
+    //     }
+    //     f.onComplete{
+    //       case Success(_) => {
+    //         NetworkServer.logger.info("[tryPivot] Pivot done successfully")
+    //       }
+    //       case Failure(t) => {
+    //         NetworkServer.logger.info("[tryPivot] Pivot failed: " + t.getMessage)
+    //       }
+    //     }
+    //   }
+    // }
   }
 }
